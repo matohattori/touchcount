@@ -311,7 +311,7 @@ export default function App() {
     if (USE_REMOTE) {
       const success = await remotePostScore(duration, name, count);
       if (!success) {
-        alert("ランキングの登録に失敗しました。\n\nGoogle Apps ScriptのエンドポイントがCORSエラーで失敗している可能性があります。\n\nAPI_URLを /dev から /exec に変更し、スクリプトを本番デプロイしてください。\n詳細はコンソールログを確認してください。");
+        alert("ランキングの登録に失敗しました。\n\nGoogle Apps Scriptの設定を確認してください：\n\n1. doPost関数が実装されているか\n2. デプロイ設定で「次のユーザーとして実行: 自分」\n3. 「アクセスできるユーザー: 全員」\n4. ContentService.createTextOutput()でJSONを返す\n\n詳細はブラウザのコンソールログ（F12）を確認してください。");
         return;
       }
       // サーバーが処理を完了するまで少し待つ
