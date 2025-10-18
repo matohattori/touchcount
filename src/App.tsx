@@ -120,11 +120,14 @@ async function remotePostScore(duration: Duration, name: string, score: number):
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ duration, name, score, date: new Date().toISOString() }),
+      redirect: "follow", // Google Apps Script may redirect
     });
     if (!res.ok) {
       console.warn("remotePostScore failed: HTTP", res.status);
       return false;
     }
+    // Google Apps Script requires reading the response body
+    await res.text();
     return true;
   } catch (e) {
     console.warn("remotePostScore failed:", e);
