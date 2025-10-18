@@ -110,8 +110,11 @@ async function remoteLoadRank(duration: Duration): Promise<RankEntry[]> {
   }
 }
 
+// サーバー処理待機時間（ミリ秒）
+const SERVER_PROCESSING_DELAY = 500;
+
 async function remotePostScore(duration: Duration, name: string, score: number): Promise<boolean> {
-  if (!USE_REMOTE) return true;
+  if (!USE_REMOTE) return true; // ローカルモードでは常に成功
   try {
     const res = await fetch(API_URL, {
       method: "POST",
@@ -306,7 +309,7 @@ export default function App() {
         return;
       }
       // サーバーが処理を完了するまで少し待つ
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, SERVER_PROCESSING_DELAY));
       const latest = await remoteLoadRank(duration);
       setRanksByDuration((prev) => ({ ...prev, [duration]: latest }));
     } else {
