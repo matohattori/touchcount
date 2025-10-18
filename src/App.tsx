@@ -110,16 +110,31 @@ async function remoteLoadRank(duration: Duration): Promise<RankEntry[]> {
   }
 }
 
-async function remotePostScore(duration: Duration, name: string, score: number) {
-  if (!USE_REMOTE) return;
+// サーバー処理待機時間（ミリ秒）
+const SERVER_PROCESSING_DELAY = 500;
+
+async function remotePostScore(duration: Duration, name: string, score: number): Promise<boolean> {
+  if (!USE_REMOTE) return true; // ローカルモードでは常に成功
   try {
-    await fetch(API_URL, {
+    const res = await fetch(API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain" }, // text/plain to avoid CORS preflight
       body: JSON.stringify({ duration, name, score, date: new Date().toISOString() }),
+      redirect: "follow", // Google Apps Script may redirect
     });
+    if (!res.ok) {
+      console.error("remotePostScore failed: HTTP", res.status, "URL:", API_URL);
+      return false;
+    }
+    // Google Apps Script requires reading the response body
+    const text = await res.text();
+    console.log("remotePostScore success:", text);
+    return true;
   } catch (e) {
-    console.warn("remotePostScore failed:", e);
+    console.error("remotePostScore failed:", e);
+    console.error("API_URL:", API_URL);
+    console.error("Error details:", e instanceof Error ? e.message : String(e));
+    return false;
   }
 }
 
@@ -294,7 +309,13 @@ export default function App() {
     const name = tempName.trim() || "名無し";
 
     if (USE_REMOTE) {
-      await remotePostScore(duration, name, count);
+      const success = await remotePostScore(duration, name, count);
+      if (!success) {
+        alert("ランキングの登録に失敗しました。\n\nGoogle Apps Scriptの設定を確認してください：\n\n1. doPost関数が実装されているか\n2. デプロイ設定で「次のユーザーとして実行: 自分」\n3. 「アクセスできるユーザー: 全員」\n4. ContentService.createTextOutput()でJSONを返す\n\n詳細はブラウザのコンソールログ（F12）を確認してください。");
+        return;
+      }
+      // サーバーが処理を完了するまで少し待つ
+      await new Promise(resolve => setTimeout(resolve, SERVER_PROCESSING_DELAY));
       const latest = await remoteLoadRank(duration);
       setRanksByDuration((prev) => ({ ...prev, [duration]: latest }));
     } else {
