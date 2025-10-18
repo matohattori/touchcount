@@ -94,10 +94,7 @@ class SoundFX {
 const sfx = new SoundFX();
 
 // === Remote API (Google Apps Script) ===
-// NOTE: /dev エンドポイントはCORSの問題でPOSTが失敗する可能性があります
-// 本番環境では /exec エンドポイントを使用し、スクリプトを「ウェブアプリとして公開」してください
-// 設定: 「次のユーザーとして実行: 自分」「アクセスできるユーザー: 全員」
-const API_URL = "https://script.google.com/macros/s/AKfycbzhOfj1e-b9F22m4NGfE8UC9OoFEeG7jky0eRRzK66J/dev";
+const API_URL = "https://script.google.com/macros/s/AKfycbzLdIGO8JWnoORn8lIYIFn65EzBiYqfn33RbkaYb4br2KlsyGKBTNDg1I9IQiTG3MZjxw/exec";
 const USE_REMOTE = true; // 共有ランキングを利用
 
 async function remoteLoadRank(duration: Duration): Promise<RankEntry[]> {
