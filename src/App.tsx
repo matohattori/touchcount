@@ -1,6 +1,13 @@
 // App.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
+// ★ 追加: ゲーム履歴の型定義
+interface GameHistory {
+  loser: string;
+  timestamp: number;
+  players: string[];
+}
+
 export default function JengaTimer() {
   const [numPlayers, setNumPlayers] = useState(2);
   const [timePerTurn, setTimePerTurn] = useState(10);
@@ -9,6 +16,17 @@ export default function JengaTimer() {
   const [gameOver, setGameOver] = useState(false);
   const [started, setStarted] = useState(false);
   const [flash, setFlash] = useState(false);
+  
+  // ★ 追加: ランキング履歴とランキング表示モード (初期値をlocalStorageから読み込み)
+  const [gameHistory, setGameHistory] = useState<GameHistory[]>(() => {
+    try {
+      const saved = localStorage.getItem("jengaGameHistory");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showRanking, setShowRanking] = useState(false);
 
   // ★ 追加: 色選択モード＆背景色
   const [colorMode, setColorMode] = useState(false);
@@ -34,6 +52,15 @@ export default function JengaTimer() {
   const [audioPrimed, setAudioPrimed] = useState(false);
   const audioLockRef = useRef(false);
   const lastSecondRef = useRef<number | null>(null);
+
+  // ★ 追加: ランキング履歴を localStorage に保存
+  useEffect(() => {
+    try {
+      localStorage.setItem("jengaGameHistory", JSON.stringify(gameHistory));
+    } catch (error) {
+      console.error("Failed to save game history:", error);
+    }
+  }, [gameHistory]);
 
   const ceilSecs = (ms: number) => Math.max(0, Math.ceil(ms / 1000));
   const nextIdx = (p: number, n: number) => (p + 1) % n;
@@ -162,6 +189,14 @@ export default function JengaTimer() {
       if (left <= 0) {
         setRunning(false);
         setGameOver(true);
+        // ★ 追加: ゲーム終了時にランキングに記録
+        const loserName = playerNames[currentPlayer];
+        const newHistory: GameHistory = {
+          loser: loserName,
+          timestamp: Date.now(),
+          players: playerNames.slice(0, numPlayers),
+        };
+        setGameHistory((prev) => [newHistory, ...prev].slice(0, 50)); // 最新50件を保持
         if (navigator.vibrate) {
           try {
             navigator.vibrate(800);
@@ -234,9 +269,11 @@ export default function JengaTimer() {
     if (
       (e.target as HTMLElement).closest("#resetButton") ||
       (e.target as HTMLElement).closest("#startButton") ||
-      (e.target as HTMLElement).closest("#colorModeToggle")
+      (e.target as HTMLElement).closest("#colorModeToggle") ||
+      (e.target as HTMLElement).closest("#rankingButton") ||
+      (e.target as HTMLElement).closest("#rankingModal")
     )
-      return; // ★ トグル操作はターン進行しない
+      return; // ★ ランキング関連の操作はターン進行しない
     ensureAudioPrimed();
     if (started && running && !gameOver) finishTurn();
   };
@@ -415,7 +452,108 @@ export default function JengaTimer() {
             <div className="text-slate-400">Startを押すと開始します</div>
           )}
         </div>
+
+        {/* ★ 追加: ランキング表示ボタン */}
+        <div className="flex items-center gap-4 justify-center mb-4">
+          <button
+            id="rankingButton"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowRanking(true);
+            }}
+            className="px-6 py-3 text-lg rounded-2xl shadow bg-blue-600 text-white hover:bg-blue-700"
+          >
+            ランキングを見る
+          </button>
+        </div>
       </div>
+
+      {/* ★ 追加: ランキングモーダル */}
+      {showRanking && (
+        <div
+          id="rankingModal"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (e.target === e.currentTarget) setShowRanking(false);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">ゲーム履歴</h2>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowRanking(false);
+                }}
+                className="text-2xl font-bold text-slate-500 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            {gameHistory.length === 0 ? (
+              <div className="text-center text-slate-400 py-8">
+                まだゲーム履歴がありません
+              </div>
+            ) : (
+              <>
+                <div className="mb-4 flex justify-end">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (
+                        window.confirm(
+                          "すべてのランキング履歴を削除しますか？"
+                        )
+                      ) {
+                        setGameHistory([]);
+                      }
+                    }}
+                    className="px-4 py-2 text-sm rounded-lg bg-red-100 text-red-700 hover:bg-red-200"
+                  >
+                    履歴をクリア
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {gameHistory.map((game, index) => {
+                    const date = new Date(game.timestamp);
+                    const dateStr = date.toLocaleDateString("ja-JP", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                    return (
+                      <div
+                        key={index}
+                        className="bg-slate-50 rounded-lg p-4 border border-slate-200"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="font-bold text-lg text-rose-600">
+                            {game.loser} が敗北
+                          </div>
+                          <div className="text-sm text-slate-500">
+                            {dateStr}
+                          </div>
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          参加者: {game.players.join(", ")}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
