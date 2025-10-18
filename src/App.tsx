@@ -110,16 +110,22 @@ async function remoteLoadRank(duration: Duration): Promise<RankEntry[]> {
   }
 }
 
-async function remotePostScore(duration: Duration, name: string, score: number) {
-  if (!USE_REMOTE) return;
+async function remotePostScore(duration: Duration, name: string, score: number): Promise<boolean> {
+  if (!USE_REMOTE) return true;
   try {
-    await fetch(API_URL, {
+    const res = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ duration, name, score, date: new Date().toISOString() }),
     });
+    if (!res.ok) {
+      console.warn("remotePostScore failed: HTTP", res.status);
+      return false;
+    }
+    return true;
   } catch (e) {
     console.warn("remotePostScore failed:", e);
+    return false;
   }
 }
 
@@ -294,7 +300,13 @@ export default function App() {
     const name = tempName.trim() || "名無し";
 
     if (USE_REMOTE) {
-      await remotePostScore(duration, name, count);
+      const success = await remotePostScore(duration, name, count);
+      if (!success) {
+        alert("ランキングの登録に失敗しました。ネットワーク接続を確認してください。");
+        return;
+      }
+      // サーバーが処理を完了するまで少し待つ
+      await new Promise(resolve => setTimeout(resolve, 500));
       const latest = await remoteLoadRank(duration);
       setRanksByDuration((prev) => ({ ...prev, [duration]: latest }));
     } else {
