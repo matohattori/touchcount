@@ -94,7 +94,7 @@ class SoundFX {
 const sfx = new SoundFX();
 
 // === Remote API (Google Apps Script) ===
-const API_URL = "https://script.google.com/macros/s/AKfycbzhOfj1e-b9F22m4NGfE8UC9OoFEeG7jky0eRRzK66J/dev";
+const API_URL = "https://script.google.com/macros/s/AKfycbzLdIGO8JWnoORn8lIYIFn65EzBiYqfn33RbkaYb4br2KlsyGKBTNDg1I9IQiTG3MZjxw/exec";
 const USE_REMOTE = true; // 共有ランキングを利用
 
 async function remoteLoadRank(duration: Duration): Promise<RankEntry[]> {
