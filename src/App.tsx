@@ -187,6 +187,7 @@ export default function App() {
   const [tempName, setTempName] = useState("");
   const [registering, setRegistering] = useState(false);
   const lastPointerIdRef = useRef<number | null>(null);
+  const countRef = useRef<number>(0);
 
   // 計測中は選択不可
   const selectNone = phase === "active" ? "select-none" : "";
@@ -217,6 +218,7 @@ export default function App() {
     stopTimers();
     setPhase("idle");
     setCount(0);
+    countRef.current = 0;
     setRemaining(duration);
     setView("game");
   }, [duration, stopTimers]);
@@ -240,6 +242,7 @@ export default function App() {
     await sfx.resume();
     stopTimers();
     setCount(0);
+    countRef.current = 0;
     setView("game");
 
     // --- 開始前カウントダウン（高い音） ---
@@ -279,7 +282,7 @@ export default function App() {
             vibrate([50, 50, 50]);
 
             const entries = [...(ranksByDuration[duration] ?? [])];
-            const qualified = qualifies(entries, count);
+            const qualified = qualifies(entries, countRef.current);
             if (qualified) {
               setShowNameDialog(true);
             } else {
@@ -296,7 +299,11 @@ export default function App() {
     if (phase !== "active") return;
     if (lastPointerIdRef.current === e.pointerId) return;
     lastPointerIdRef.current = e.pointerId;
-    setCount((c) => c + 1);
+    setCount((c) => {
+      const newCount = c + 1;
+      countRef.current = newCount;
+      return newCount;
+    });
     vibrate(10);
   }, [phase]);
 
@@ -309,9 +316,10 @@ export default function App() {
   const saveName = useCallback(async () => {
     setRegistering(true);
     const name = tempName.trim() || "名無し";
+    const finalScore = countRef.current;
 
     if (USE_REMOTE) {
-      const success = await remotePostScore(duration, name, count);
+      const success = await remotePostScore(duration, name, finalScore);
       if (!success) {
         setRegistering(false);
         alert("ランキングの登録に失敗しました。\n\nGoogle Apps Scriptの設定を確認してください：\n\n1. doPost関数が実装されているか\n2. デプロイ設定で「次のユーザーとして実行: 自分」\n3. 「アクセスできるユーザー: 全員」\n4. ContentService.createTextOutput()でJSONを返す\n\n詳細はブラウザのコンソールログ（F12）を確認してください。");
@@ -323,7 +331,7 @@ export default function App() {
       setRanksByDuration((prev) => ({ ...prev, [duration]: latest }));
     } else {
       const list = [...(ranksByDuration[duration] ?? [])];
-      list.push({ name, score: count, date: new Date().toISOString() });
+      list.push({ name, score: finalScore, date: new Date().toISOString() });
       list.sort((a, b) => b.score - a.score || a.date.localeCompare(b.date));
       const top5 = list.slice(0, 5);
       setRanksByDuration((prev) => ({ ...prev, [duration]: top5 }));
@@ -334,7 +342,7 @@ export default function App() {
     setTempName("");
     setView("rankings");
     setRegistering(false);
-  }, [tempName, count, duration, ranksByDuration]);
+  }, [tempName, duration, ranksByDuration]);
 
 
   // ランキングリセット機能は削除
@@ -364,13 +372,13 @@ export default function App() {
       case "idle":
         return view === "rankings" ? "ランキング" : "タップ計測";
       case "ready":
-        return `まもなく開始 (${remaining})`;
+        return "まもなく開始";
       case "active":
-        return `計測中 残り${remaining}s`;
+        return "計測中";
       case "finished":
         return view === "rankings" ? "ランキング" : "終了！";
     }
-  }, [phase, remaining, view]);
+  }, [phase, view]);
 
   const ranking = ranksByDuration[duration] ?? [];
 
@@ -384,40 +392,25 @@ export default function App() {
       style={{ touchAction: "manipulation" }}
     >
       {/* Top Bar */}
-      <div className="w-full max-w-3xl px-4 py-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{headerText}</h1>
-        <div className="flex items-center gap-2">
-          <select
-            value={duration}
-            disabled={phase === "ready" || phase === "active"}
-            onChange={(e) => setDuration(parseInt(e.target.value, 10) as Duration)}
-            className="bg-slate-800 px-3 py-2 rounded-xl border border-slate-700"
-          >
-            {DURATIONS.map((d) => (
-              <option key={d} value={d}>{d}秒</option>
-            ))}
-          </select>
-
-          {view === "game" ? (
-            phase === "idle" || phase === "finished" ? (
-              <button
-                onClick={start}
-                className="px-4 py-2 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 transition"
-              >開始</button>
-            ) : (
-              <button
-                onMouseDown={beginResetHold}
-                onTouchStart={beginResetHold}
-                onMouseUp={cancelResetHold}
-                onMouseLeave={cancelResetHold}
-                onTouchEnd={cancelResetHold}
-                className="px-4 py-2 rounded-2xl bg-slate-700 hover:bg-slate-600 active:scale-95 transition"
-              >リセット（長押し）</button>
-            )
-          ) : (
+      <div className="w-full max-w-3xl px-4 py-6 flex items-center justify-between">
+        <h1 className="text-3xl font-bold">{headerText}</h1>
+        <div className="flex items-center gap-3">
+          {view === "game" && (phase === "ready" || phase === "active") && (
+            <button
+              onMouseDown={beginResetHold}
+              onTouchStart={beginResetHold}
+              onMouseUp={cancelResetHold}
+              onMouseLeave={cancelResetHold}
+              onTouchEnd={cancelResetHold}
+              className="px-3 py-2 text-sm rounded-xl bg-slate-700 hover:bg-slate-600 transition-colors border border-slate-600"
+            >
+              リセット（長押し）
+            </button>
+          )}
+          {view === "rankings" && (
             <button
               onClick={() => setView("game")}
-              className="px-4 py-2 rounded-2xl bg-slate-700 hover:bg-slate-600"
+              className="px-5 py-2.5 rounded-2xl bg-slate-700 hover:bg-slate-600 transition-colors"
             >戻る</button>
           )}
         </div>
@@ -427,63 +420,88 @@ export default function App() {
       <div className="w-full max-w-3xl px-4 pb-8">
         {view === "game" ? (
           <>
+            {/* Time Selection Buttons */}
+            <div className="mb-6 flex flex-wrap gap-3 justify-center">
+              {DURATIONS.map((d) => (
+                <button 
+                  key={d} 
+                  onClick={() => setDuration(d)} 
+                  disabled={phase === "ready" || phase === "active"} 
+                  className={`px-6 py-3 rounded-2xl font-semibold text-lg transition-all ${
+                    d === duration 
+                      ? "bg-emerald-600 border-2 border-emerald-400 shadow-lg scale-105" 
+                      : "bg-slate-800 border-2 border-slate-700 hover:bg-slate-700 hover:border-slate-600"
+                  } ${(phase === "ready" || phase === "active") ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  {d}秒
+                </button>
+              ))}
+            </div>
+
             {/* Counter Panel */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-1 p-4 bg-slate-800 rounded-2xl shadow">
-                <div className="text-sm text-slate-400">残り時間</div>
-                <div className="text-4xl font-bold">{phase === "ready" ? `${remaining}` : phase === "active" ? `${remaining}` : `${duration}`}</div>
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="col-span-1 p-6 bg-slate-800 rounded-3xl shadow-xl border border-slate-700">
+                <div className="text-sm text-slate-400 mb-2">残り時間</div>
+                <div className="text-5xl font-bold">{phase === "ready" ? `${remaining}` : phase === "active" ? `${remaining}` : `${duration}`}</div>
               </div>
-              <div className="col-span-2 p-4 bg-slate-800 rounded-2xl shadow flex flex-col items-center justify-center">
-                <div className="text-sm text-slate-400">タップ回数</div>
-                <div className="text-7xl font-extrabold tracking-wider">{count}</div>
-                <div className="mt-2 text-xs text-slate-400">（計測中は画面のどこを触ってもカウント）</div>
+              <div className="col-span-2 p-6 bg-slate-800 rounded-3xl shadow-xl border border-slate-700 flex flex-col items-center justify-center">
+                <div className="text-sm text-slate-400 mb-2">タップ回数</div>
+                <div className="text-8xl font-extrabold tracking-wider text-emerald-400">{count}</div>
               </div>
             </div>
 
-            {/* Tappable big area */}
-            <div className={`mt-4 rounded-3xl border-2 ${phase === "active" ? "border-emerald-500" : "border-slate-700"} p-6 text-center select-none`}>
-              {phase === "idle" && <p className="text-slate-300">開始を押すと「3,2,1」の高音ビープ後に計測開始します。</p>}
-              {phase === "ready" && <p className="text-lg">準備… {remaining}</p>}
-              {phase === "active" && <p className="text-lg">いまタップするとカウントされます！</p>}
+            {/* Start Button / Action Area */}
+            {view === "game" && (phase === "idle" || phase === "finished") && (
+              <div className="flex justify-center mb-6">
+                <button
+                  onClick={start}
+                  className="px-20 py-8 text-3xl font-bold rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 active:scale-95 transition-all shadow-2xl border-2 border-emerald-400"
+                >
+                  開始
+                </button>
+              </div>
+            )}
+
+            {/* Status messages */}
+            <div className={`rounded-3xl border-2 ${phase === "active" ? "border-emerald-500 bg-emerald-950/30" : "border-slate-700 bg-slate-800/50"} p-8 text-center select-none shadow-xl`}>
+              {phase === "idle" && <p className="text-xl text-slate-300">時間を選択して開始ボタンを押してください</p>}
+              {phase === "ready" && <p className="text-3xl font-bold text-emerald-400">準備… {remaining}</p>}
+              {phase === "active" && <p className="text-2xl font-semibold text-emerald-300">画面をタップしてください！</p>}
               {phase === "finished" && (
-                <div className="flex flex-col items-center gap-2">
-                  <p className="text-lg">おつかれさま！ スコア：<span className="font-bold">{count}</span></p>
-                  <button onClick={() => setView("rankings")} className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400">この時間のランキングを見る</button>
+                <div className="flex flex-col items-center gap-4">
+                  <p className="text-2xl">おつかれさま！ スコア：<span className="font-bold text-emerald-400 text-3xl">{count}</span></p>
+                  <button onClick={() => setView("rankings")} className="px-8 py-4 text-xl rounded-2xl bg-amber-500 hover:bg-amber-400 font-semibold shadow-lg transition-all">ランキングを見る</button>
                 </div>
               )}
             </div>
 
-            {/* Quick switch */}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {DURATIONS.map((d) => (
-                <button key={d} onClick={() => setDuration(d)} disabled={phase === "ready" || phase === "active"} className={`px-3 py-1 rounded-full border ${d === duration ? "bg-emerald-600 border-emerald-500" : "bg-slate-800 border-slate-700 hover:bg-slate-700"}`}>
-                  {d}s
+            {/* Quick access to rankings */}
+            {phase !== "active" && phase !== "ready" && (
+              <div className="mt-6 flex justify-center">
+                <button onClick={() => setView("rankings")} className="px-6 py-3 rounded-2xl bg-slate-700 hover:bg-slate-600 font-semibold transition-colors">
+                  ランキングへ
                 </button>
-              ))}
-              {phase !== "active" && (
-                <button onClick={() => setView("rankings")} className="ml-auto px-3 py-1 rounded-full bg-slate-700 hover:bg-slate-600">ランキングへ</button>
-              )}
-            </div>
+              </div>
+            )}
           </>
         ) : (
           <>
             {/* Rankings Page */}
-            <div className="p-4 bg-slate-800 rounded-2xl">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-xl font-bold">ランキング（{duration}秒・上位5位）</h2>
-
+            <div className="p-6 bg-slate-800 rounded-3xl shadow-xl border border-slate-700">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold">ランキング（{duration}秒・上位5位）</h2>
               </div>
               {ranking.length === 0 ? (
-                <div className="text-slate-400 text-sm">まだ記録がありません。トップ5に入ると名前を登録できます。</div>
+                <div className="text-slate-400 text-center py-8">まだ記録がありません。トップ5に入ると名前を登録できます。</div>
               ) : (
-                <ol className="space-y-2">
+                <ol className="space-y-3">
                   {ranking.map((r, i) => (
-                    <li key={`${r.name}-${r.date}`} className="flex items-center justify-between bg-slate-900 px-4 py-2 rounded-xl">
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-slate-400 w-6">{i + 1}位</span>
-                        <span className="font-semibold">{r.name}</span>
+                    <li key={`${r.name}-${r.date}`} className="flex items-center justify-between bg-slate-900 px-6 py-4 rounded-2xl border border-slate-700 hover:border-slate-600 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <span className="text-lg font-bold text-slate-400 w-8">{i + 1}位</span>
+                        <span className="font-semibold text-lg">{r.name}</span>
                       </div>
-                      <div className="font-mono">{r.score}</div>
+                      <div className="font-mono text-2xl font-bold text-emerald-400">{r.score}</div>
                     </li>
                   ))}
                 </ol>
@@ -491,13 +509,26 @@ export default function App() {
             </div>
 
             {/* Tabs for durations in ranking page */}
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-6 flex flex-wrap gap-3 justify-center">
               {DURATIONS.map((d) => (
-                <button key={d} onClick={() => setDuration(d)} className={`px-3 py-1 rounded-full border ${d === duration ? "bg-amber-600 border-amber-500" : "bg-slate-800 border-slate-700 hover:bg-slate-700"}`}>
-                  {d}s
+                <button 
+                  key={d} 
+                  onClick={() => setDuration(d)} 
+                  className={`px-6 py-3 rounded-2xl font-semibold text-lg transition-all ${
+                    d === duration 
+                      ? "bg-amber-600 border-2 border-amber-400 shadow-lg" 
+                      : "bg-slate-800 border-2 border-slate-700 hover:bg-slate-700 hover:border-slate-600"
+                  }`}
+                >
+                  {d}秒
                 </button>
               ))}
-              <button onClick={() => setView("game")} className="ml-auto px-3 py-1 rounded-full bg-slate-700 hover:bg-slate-600">計測へ戻る</button>
+            </div>
+            
+            <div className="mt-4 flex justify-center">
+              <button onClick={() => setView("game")} className="px-8 py-4 text-lg rounded-2xl bg-slate-700 hover:bg-slate-600 font-semibold transition-colors shadow-lg">
+                計測へ戻る
+              </button>
             </div>
           </>
         )}
@@ -506,32 +537,30 @@ export default function App() {
       {/* Name dialog */}
       {showNameDialog && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onPointerDown={(e)=>e.stopPropagation()}>
-          <div className="w-full max-w-md bg-slate-800 rounded-2xl p-6 border border-slate-700 relative">
+          <div className="w-full max-w-md bg-slate-800 rounded-3xl p-8 border-2 border-slate-700 shadow-2xl relative">
             {registering && (
-              <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 rounded-2xl">
-                <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-b-4 border-emerald-400 mb-3"></div>
-                <span className="text-lg font-bold">登録中...</span>
+              <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 rounded-3xl">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-emerald-400 mb-4"></div>
+                <span className="text-xl font-bold">登録中...</span>
               </div>
             )}
-            <h3 className="text-lg font-bold mb-2">トップ5入り！お名前を入力</h3>
+            <h3 className="text-2xl font-bold mb-4">トップ5入り！お名前を入力</h3>
             <input
               autoFocus
               value={tempName}
               onChange={(e) => setTempName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && saveName()}
-              placeholder=""
-              className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 mb-3"
+              placeholder="名前を入力"
+              className="w-full px-4 py-3 rounded-2xl bg-slate-900 border-2 border-slate-700 mb-4 text-lg focus:border-emerald-500 focus:outline-none"
               disabled={registering}
             />
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowNameDialog(false); setTempName(""); setView("rankings"); }} className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600" disabled={registering}>スキップ</button>
-              <button onClick={saveName} className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400" disabled={registering}>登録</button>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => { setShowNameDialog(false); setTempName(""); setView("rankings"); }} className="px-6 py-3 rounded-2xl bg-slate-700 hover:bg-slate-600 font-semibold transition-colors" disabled={registering}>スキップ</button>
+              <button onClick={saveName} className="px-6 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 font-semibold transition-colors" disabled={registering}>登録</button>
             </div>
           </div>
         </div>
       )}
-
-      <footer className="opacity-60 text-xs py-6">開始前は高音ビープで3→2→1、終了3秒前からは低音ビープ、0で爆発音。計測中はuser-select無効＆全画面タップでカウント。</footer>
     </div>
   );
 }
