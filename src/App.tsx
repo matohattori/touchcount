@@ -187,6 +187,7 @@ export default function App() {
   const [tempName, setTempName] = useState("");
   const [registering, setRegistering] = useState(false);
   const lastPointerIdRef = useRef<number | null>(null);
+  const countRef = useRef<number>(0);
 
   // 計測中は選択不可
   const selectNone = phase === "active" ? "select-none" : "";
@@ -217,6 +218,7 @@ export default function App() {
     stopTimers();
     setPhase("idle");
     setCount(0);
+    countRef.current = 0;
     setRemaining(duration);
     setView("game");
   }, [duration, stopTimers]);
@@ -240,6 +242,7 @@ export default function App() {
     await sfx.resume();
     stopTimers();
     setCount(0);
+    countRef.current = 0;
     setView("game");
 
     // --- 開始前カウントダウン（高い音） ---
@@ -279,7 +282,7 @@ export default function App() {
             vibrate([50, 50, 50]);
 
             const entries = [...(ranksByDuration[duration] ?? [])];
-            const qualified = qualifies(entries, count);
+            const qualified = qualifies(entries, countRef.current);
             if (qualified) {
               setShowNameDialog(true);
             } else {
@@ -296,7 +299,11 @@ export default function App() {
     if (phase !== "active") return;
     if (lastPointerIdRef.current === e.pointerId) return;
     lastPointerIdRef.current = e.pointerId;
-    setCount((c) => c + 1);
+    setCount((c) => {
+      const newCount = c + 1;
+      countRef.current = newCount;
+      return newCount;
+    });
     vibrate(10);
   }, [phase]);
 
@@ -309,9 +316,10 @@ export default function App() {
   const saveName = useCallback(async () => {
     setRegistering(true);
     const name = tempName.trim() || "名無し";
+    const finalScore = countRef.current;
 
     if (USE_REMOTE) {
-      const success = await remotePostScore(duration, name, count);
+      const success = await remotePostScore(duration, name, finalScore);
       if (!success) {
         setRegistering(false);
         alert("ランキングの登録に失敗しました。\n\nGoogle Apps Scriptの設定を確認してください：\n\n1. doPost関数が実装されているか\n2. デプロイ設定で「次のユーザーとして実行: 自分」\n3. 「アクセスできるユーザー: 全員」\n4. ContentService.createTextOutput()でJSONを返す\n\n詳細はブラウザのコンソールログ（F12）を確認してください。");
@@ -323,7 +331,7 @@ export default function App() {
       setRanksByDuration((prev) => ({ ...prev, [duration]: latest }));
     } else {
       const list = [...(ranksByDuration[duration] ?? [])];
-      list.push({ name, score: count, date: new Date().toISOString() });
+      list.push({ name, score: finalScore, date: new Date().toISOString() });
       list.sort((a, b) => b.score - a.score || a.date.localeCompare(b.date));
       const top5 = list.slice(0, 5);
       setRanksByDuration((prev) => ({ ...prev, [duration]: top5 }));
@@ -334,7 +342,7 @@ export default function App() {
     setTempName("");
     setView("rankings");
     setRegistering(false);
-  }, [tempName, count, duration, ranksByDuration]);
+  }, [tempName, duration, ranksByDuration]);
 
 
   // ランキングリセット機能は削除
@@ -387,6 +395,18 @@ export default function App() {
       <div className="w-full max-w-3xl px-4 py-6 flex items-center justify-between">
         <h1 className="text-3xl font-bold">{headerText}</h1>
         <div className="flex items-center gap-3">
+          {view === "game" && (phase === "ready" || phase === "active") && (
+            <button
+              onMouseDown={beginResetHold}
+              onTouchStart={beginResetHold}
+              onMouseUp={cancelResetHold}
+              onMouseLeave={cancelResetHold}
+              onTouchEnd={cancelResetHold}
+              className="px-3 py-2 text-sm rounded-xl bg-slate-700 hover:bg-slate-600 transition-colors border border-slate-600"
+            >
+              リセット（長押し）
+            </button>
+          )}
           {view === "rankings" && (
             <button
               onClick={() => setView("game")}
@@ -430,7 +450,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Start Button / Reset Button / Action Area */}
+            {/* Start Button / Action Area */}
             {view === "game" && (phase === "idle" || phase === "finished") && (
               <div className="flex justify-center mb-6">
                 <button
@@ -438,21 +458,6 @@ export default function App() {
                   className="px-20 py-8 text-3xl font-bold rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 active:scale-95 transition-all shadow-2xl border-2 border-emerald-400"
                 >
                   開始
-                </button>
-              </div>
-            )}
-
-            {(phase === "ready" || phase === "active") && (
-              <div className="flex justify-center mb-6">
-                <button
-                  onMouseDown={beginResetHold}
-                  onTouchStart={beginResetHold}
-                  onMouseUp={cancelResetHold}
-                  onMouseLeave={cancelResetHold}
-                  onTouchEnd={cancelResetHold}
-                  className="px-12 py-6 text-xl font-semibold rounded-3xl bg-slate-700 hover:bg-slate-600 active:scale-95 transition-all shadow-xl border-2 border-slate-600"
-                >
-                  リセット（長押し）
                 </button>
               </div>
             )}
