@@ -8,6 +8,9 @@ interface GameHistory {
   players: string[];
 }
 
+// ★ 追加: 定数定義
+const MAX_HISTORY_ITEMS = 50;
+
 export default function JengaTimer() {
   const [numPlayers, setNumPlayers] = useState(2);
   const [timePerTurn, setTimePerTurn] = useState(10);
@@ -196,7 +199,7 @@ export default function JengaTimer() {
           timestamp: Date.now(),
           players: playerNames.slice(0, numPlayers),
         };
-        setGameHistory((prev) => [newHistory, ...prev].slice(0, 50)); // 最新50件を保持
+        setGameHistory((prev) => [newHistory, ...prev].slice(0, MAX_HISTORY_ITEMS)); // 最新N件を保持
         if (navigator.vibrate) {
           try {
             navigator.vibrate(800);
