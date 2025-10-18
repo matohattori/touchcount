@@ -94,6 +94,9 @@ class SoundFX {
 const sfx = new SoundFX();
 
 // === Remote API (Google Apps Script) ===
+// NOTE: /dev エンドポイントはCORSの問題でPOSTが失敗する可能性があります
+// 本番環境では /exec エンドポイントを使用し、スクリプトを「ウェブアプリとして公開」してください
+// 設定: 「次のユーザーとして実行: 自分」「アクセスできるユーザー: 全員」
 const API_URL = "https://script.google.com/macros/s/AKfycbzhOfj1e-b9F22m4NGfE8UC9OoFEeG7jky0eRRzK66J/dev";
 const USE_REMOTE = true; // 共有ランキングを利用
 
@@ -123,14 +126,17 @@ async function remotePostScore(duration: Duration, name: string, score: number):
       redirect: "follow", // Google Apps Script may redirect
     });
     if (!res.ok) {
-      console.warn("remotePostScore failed: HTTP", res.status);
+      console.error("remotePostScore failed: HTTP", res.status, "URL:", API_URL);
       return false;
     }
     // Google Apps Script requires reading the response body
-    await res.text();
+    const text = await res.text();
+    console.log("remotePostScore success:", text);
     return true;
   } catch (e) {
-    console.warn("remotePostScore failed:", e);
+    console.error("remotePostScore failed:", e);
+    console.error("API_URL:", API_URL);
+    console.error("Error details:", e instanceof Error ? e.message : String(e));
     return false;
   }
 }
@@ -308,7 +314,7 @@ export default function App() {
     if (USE_REMOTE) {
       const success = await remotePostScore(duration, name, count);
       if (!success) {
-        alert("ランキングの登録に失敗しました。ネットワーク接続を確認してください。");
+        alert("ランキングの登録に失敗しました。\n\nGoogle Apps ScriptのエンドポイントがCORSエラーで失敗している可能性があります。\n\nAPI_URLを /dev から /exec に変更し、スクリプトを本番デプロイしてください。\n詳細はコンソールログを確認してください。");
         return;
       }
       // サーバーが処理を完了するまで少し待つ
