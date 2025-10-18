@@ -118,7 +118,7 @@ async function remotePostScore(duration: Duration, name: string, score: number):
   try {
     const res = await fetch(API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain" }, // text/plain to avoid CORS preflight
       body: JSON.stringify({ duration, name, score, date: new Date().toISOString() }),
       redirect: "follow", // Google Apps Script may redirect
     });
