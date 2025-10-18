@@ -185,6 +185,7 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [showNameDialog, setShowNameDialog] = useState(false);
   const [tempName, setTempName] = useState("");
+  const [registering, setRegistering] = useState(false);
   const lastPointerIdRef = useRef<number | null>(null);
 
   // 計測中は選択不可
@@ -306,11 +307,13 @@ export default function App() {
   }, []);
 
   const saveName = useCallback(async () => {
+    setRegistering(true);
     const name = tempName.trim() || "名無し";
 
     if (USE_REMOTE) {
       const success = await remotePostScore(duration, name, count);
       if (!success) {
+        setRegistering(false);
         alert("ランキングの登録に失敗しました。\n\nGoogle Apps Scriptの設定を確認してください：\n\n1. doPost関数が実装されているか\n2. デプロイ設定で「次のユーザーとして実行: 自分」\n3. 「アクセスできるユーザー: 全員」\n4. ContentService.createTextOutput()でJSONを返す\n\n詳細はブラウザのコンソールログ（F12）を確認してください。");
         return;
       }
@@ -330,34 +333,30 @@ export default function App() {
     setShowNameDialog(false);
     setTempName("");
     setView("rankings");
+    setRegistering(false);
   }, [tempName, count, duration, ranksByDuration]);
 
-  // ランキングのリセット（選択中の時間のみ）
-  const clearRank = useCallback(() => {
-    if (!confirm(`${duration}秒のランキングをリセットします。よろしいですか？`)) return;
-    if (USE_REMOTE) {
-      alert("共有ランキングのリセットは未対応です。スプレッドシートから削除してください。(※要望があればAPI側にclear機能を追加できます)");
-      return;
-    }
-    clearRankStorage(duration);
-    const fresh = loadRank(duration); // should be []
-    setRanksByDuration((prev) => ({ ...prev, [duration]: fresh }));
-  }, [duration]);
+
+  // ランキングリセット機能は削除
 
   // idle/ready のときは remaining を duration に同期
   useEffect(() => {
     if (phase === "idle" || phase === "ready") setRemaining(duration);
   }, [duration, phase]);
 
-  // ランキング画面を開いた/時間を切り替えた時に共有ランキングを取得
+
+
+  // 初回マウント時に全durationのランキングをGoogle Sheetsから取得してキャッシュ
   useEffect(() => {
     if (!USE_REMOTE) return;
-    if (view === "rankings") {
-      remoteLoadRank(duration).then((list) => {
-        setRanksByDuration((prev) => ({ ...prev, [duration]: list }));
-      });
-    }
-  }, [view, duration]);
+    (async () => {
+      const all: Partial<Record<Duration, RankEntry[]>> = {};
+      await Promise.all(DURATIONS.map(async (d) => {
+        all[d] = await remoteLoadRank(d);
+      }));
+      setRanksByDuration((prev) => ({ ...prev, ...all }));
+    })();
+  }, []);
 
   // ヘッダーテキスト & 現在のランキング配列
   const headerText = useMemo(() => {
@@ -472,7 +471,7 @@ export default function App() {
             <div className="p-4 bg-slate-800 rounded-2xl">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-xl font-bold">ランキング（{duration}秒・上位5位）</h2>
-                <button onClick={clearRank} className="text-xs bg-slate-700 px-3 py-1 rounded-xl hover:bg-slate-600">リセット</button>
+
               </div>
               {ranking.length === 0 ? (
                 <div className="text-slate-400 text-sm">まだ記録がありません。トップ5に入ると名前を登録できます。</div>
@@ -507,19 +506,26 @@ export default function App() {
       {/* Name dialog */}
       {showNameDialog && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onPointerDown={(e)=>e.stopPropagation()}>
-          <div className="w-full max-w-md bg-slate-800 rounded-2xl p-6 border border-slate-700">
+          <div className="w-full max-w-md bg-slate-800 rounded-2xl p-6 border border-slate-700 relative">
+            {registering && (
+              <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10 rounded-2xl">
+                <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-b-4 border-emerald-400 mb-3"></div>
+                <span className="text-lg font-bold">登録中...</span>
+              </div>
+            )}
             <h3 className="text-lg font-bold mb-2">トップ5入り！お名前を入力</h3>
             <input
               autoFocus
               value={tempName}
               onChange={(e) => setTempName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && saveName()}
-              placeholder="例: まと"
+              placeholder=""
               className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 mb-3"
+              disabled={registering}
             />
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowNameDialog(false); setTempName(""); setView("rankings"); }} className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600">スキップ</button>
-              <button onClick={saveName} className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400">登録</button>
+              <button onClick={() => { setShowNameDialog(false); setTempName(""); setView("rankings"); }} className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600" disabled={registering}>スキップ</button>
+              <button onClick={saveName} className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400" disabled={registering}>登録</button>
             </div>
           </div>
         </div>
